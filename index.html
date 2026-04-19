@@ -293,12 +293,12 @@
 
   /* Input level meter during record */
   .input-meter {
-    width: 180px; height: 6px; background: rgba(255,255,255,0.1);
-    border-radius: 3px; margin: 8px 0 20px; overflow: hidden; position: relative;
+    width: 200px; height: 8px; background: rgba(255,255,255,0.1);
+    border-radius: 4px; margin: 4px 0 16px; overflow: hidden; position: relative;
   }
   .input-meter-bar {
-    height: 100%; background: linear-gradient(90deg, #5DCAA5 0%, #5DCAA5 70%, #EF9F27 85%, #E24B4A 100%);
-    width: 0%; transition: width 0.05s;
+    height: 100%; background: linear-gradient(90deg, #5DCAA5 0%, #5DCAA5 65%, #EF9F27 82%, #E24B4A 100%);
+    width: 0%; transition: width 0.05s; border-radius: 4px;
   }
 
   /* Emoji picker */
@@ -556,6 +556,7 @@ async function startRecording(options = {}) {
   const onFinish = options.onFinish;
   const onCancel = options.onCancel;
   const title = options.title || 'Maak je geluid!';
+  const autoStart = options.autoStart || false;
 
   await initAudio();
   if (State.audioCtx.state === 'suspended') await State.audioCtx.resume();
@@ -574,7 +575,12 @@ async function startRecording(options = {}) {
     return;
   }
 
-  // UI overlay
+  // Refresh device list now that permission has been granted (labels only visible then)
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    State.devices = devs.filter(d => d.kind === 'audioinput');
+  } catch(e) {}
+
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
@@ -585,16 +591,17 @@ async function startRecording(options = {}) {
         </select>
       </div>
     ` : ''}
-    <div class="rec-time"><span id="recTime">0.0</span>s / ${maxSeconds}s</div>
-    <div class="rec-title">${title}</div>
+    <div class="rec-time"><span id="recTime">0.0</span>s <span>/ ${maxSeconds}s</span></div>
+    <div class="rec-title" id="recTitle">${title}</div>
     <div class="rec-waveform" id="recWave">
-      ${Array.from({length: 48}).map(() => '<div class="rec-wave-bar" style="height: 4px;"></div>').join('')}
+      ${Array.from({length: 48}).map(() => '<div class="rec-wave-bar" style="height: 4px; background: #5DCAA5;"></div>').join('')}
     </div>
     <div class="input-meter"><div class="input-meter-bar" id="meterBar"></div></div>
-    <button class="rec-btn" id="recStopBtn">
-      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+    <div id="recStatus" style="color: #5DCAA5; font-size: 14px; margin-bottom: 12px; min-height: 20px; text-align: center;">Maak geluid om te testen · tik op knop om te starten</div>
+    <button class="rec-btn idle" id="recMainBtn" style="background: #5DCAA5;">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>
     </button>
-    <div class="rec-hint">Tik om te stoppen</div>
+    <div class="rec-hint" id="recHint">Tik om op te nemen</div>
     <button class="rec-cancel" id="recCancelBtn">Annuleren</button>
   `;
   document.body.appendChild(overlay);
@@ -602,26 +609,25 @@ async function startRecording(options = {}) {
   const waveBars = overlay.querySelectorAll('.rec-wave-bar');
   const timeEl = overlay.querySelector('#recTime');
   const meterBar = overlay.querySelector('#meterBar');
+  const mainBtn = overlay.querySelector('#recMainBtn');
+  const statusEl = overlay.querySelector('#recStatus');
+  const hintEl = overlay.querySelector('#recHint');
 
-  // Audio analysis for live waveform
   const sourceNode = State.audioCtx.createMediaStreamSource(stream);
   const analyser = State.audioCtx.createAnalyser();
   analyser.fftSize = 256;
   sourceNode.connect(analyser);
   const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-  // Setup MediaRecorder
   const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(t => MediaRecorder.isTypeSupported(t)) || '';
   const mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
   const chunks = [];
   mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-  const startTime = performance.now();
-  let rafId, finished = false;
+  let rafId, finished = false, recording = false, startTime = 0;
 
   function tick() {
     analyser.getByteTimeDomainData(dataArray);
-    // waveform update
     const step = Math.floor(dataArray.length / waveBars.length);
     let peak = 0;
     for (let i = 0; i < waveBars.length; i++) {
@@ -629,18 +635,32 @@ async function startRecording(options = {}) {
       const amp = Math.abs((v - 128) / 128);
       const h = Math.max(4, amp * 70);
       waveBars[i].style.height = h + 'px';
+      waveBars[i].style.background = recording ? '#E24B4A' : '#5DCAA5';
       if (amp > peak) peak = amp;
     }
     meterBar.style.width = Math.min(100, peak * 150) + '%';
 
-    const elapsed = (performance.now() - startTime) / 1000;
-    timeEl.textContent = elapsed.toFixed(1);
-    if (elapsed >= maxSeconds && !finished) { finish(); return; }
+    if (recording) {
+      const elapsed = (performance.now() - startTime) / 1000;
+      timeEl.textContent = elapsed.toFixed(1);
+      if (elapsed >= maxSeconds && !finished) { finish(); return; }
+    }
     rafId = requestAnimationFrame(tick);
   }
-
-  mediaRecorder.start();
   tick();
+
+  function beginRecord() {
+    if (recording) return;
+    recording = true;
+    startTime = performance.now();
+    mediaRecorder.start();
+    mainBtn.classList.remove('idle');
+    mainBtn.style.background = '#E24B4A';
+    mainBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+    statusEl.textContent = 'Aan het opnemen...';
+    statusEl.style.color = '#E24B4A';
+    hintEl.textContent = 'Tik om te stoppen';
+  }
 
   function cleanup() {
     cancelAnimationFrame(rafId);
@@ -650,11 +670,17 @@ async function startRecording(options = {}) {
 
   async function finish() {
     if (finished) return;
+    if (!recording) {
+      finished = true;
+      cleanup();
+      if (onCancel) onCancel();
+      return;
+    }
     finished = true;
     cancelAnimationFrame(rafId);
     await new Promise(resolve => {
       mediaRecorder.onstop = resolve;
-      mediaRecorder.stop();
+      try { mediaRecorder.stop(); } catch(e) { resolve(); }
     });
     const blob = new Blob(chunks, { type: mime || 'audio/webm' });
     const arrayBuffer = await blob.arrayBuffer();
@@ -670,23 +696,28 @@ async function startRecording(options = {}) {
     }
   }
 
-  overlay.querySelector('#recStopBtn').onclick = finish;
+  mainBtn.onclick = () => {
+    if (!recording) beginRecord();
+    else finish();
+  };
   overlay.querySelector('#recCancelBtn').onclick = () => {
-    mediaRecorder.onstop = () => {};
-    try { mediaRecorder.stop(); } catch(e) {}
+    if (recording) { try { mediaRecorder.stop(); } catch(e) {} }
+    finished = true;
     cleanup();
     if (onCancel) onCancel();
   };
   const devSel = overlay.querySelector('#devSelect');
   if (devSel) devSel.onchange = async (e) => {
     State.deviceId = e.target.value;
-    // Restart with new device
-    try { mediaRecorder.stop(); } catch(e) {}
+    if (recording) { try { mediaRecorder.stop(); } catch(e) {} }
+    finished = true;
     cleanup();
     startRecording(options);
   };
 
-  recorderState = { cleanup, finish };
+  if (autoStart) setTimeout(beginRecord, 50);
+
+  recorderState = { cleanup, finish, beginRecord };
 }
 
 // -------- SAMPLE CREATION FLOW --------
@@ -1409,6 +1440,7 @@ async function doLoopRecord(trackIdx, isOverdub) {
   startRecording({
     maxSeconds: Math.min(recordLength, 12),
     title: isOverdub ? 'Overdub: speel over de loop!' : 'Neem je loop op',
+    autoStart: true,
     onFinish: async (buffer) => {
       // Trim to exact length
       const trimmed = trimBuffer(buffer, targetLength);
