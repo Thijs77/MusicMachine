@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Geluidenstudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    font-family: 'Fredoka', system-ui, sans-serif;
+    background: #0f0b24; color: white; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  body { touch-action: manipulation; }
+
+  #app { display: flex; flex-direction: column; height: 100dvh; max-width: 900px; margin: 0 auto; }
+
+  /* ===== START SCREEN ===== */
+  #start {
+    position: fixed; inset: 0; background: linear-gradient(135deg, #1a1530 0%, #2a1f4a 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; text-align: center; z-index: 100;
+  }
+  #start h1 {
+    font-size: clamp(36px, 8vw, 64px); margin: 0 0 16px; font-weight: 700;
+    background: linear-gradient(90deg, #EF9F27, #D4537E, #7F77DD, #5DCAA5);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  #start p { font-size: 18px; color: #B4B2A9; margin: 0 0 40px; max-width: 400px; line-height: 1.5; }
+  #startBtn {
+    padding: 20px 48px; border-radius: 40px; border: none; cursor: pointer;
+    background: #E24B4A; color: white; font-size: 22px; font-weight: 600;
+    font-family: inherit; box-shadow: 0 8px 24px rgba(226,75,74,0.4);
+    transition: transform 0.1s;
+  }
+  #startBtn:active { transform: scale(0.96); }
+
+  /* ===== TABS ===== */
+  #tabs {
+    display: flex; background: #0f0b24; padding: 8px; gap: 6px; flex-shrink: 0;
+  }
+  .tab {
+    flex: 1; padding: 12px 4px; border: none; background: transparent;
+    color: #888; border-radius: 14px; font-size: 13px; font-weight: 500;
+    cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-family: inherit; transition: background 0.15s, color 0.15s;
+    min-height: 60px;
+  }
+  .tab svg { width: 24px; height: 24px; }
+  .tab.active { color: white; }
+  .tab[data-tab="studio"].active { background: #7F77DD; }
+  .tab[data-tab="drum"].active { background: #BA7517; }
+  .tab[data-tab="melody"].active { background: #0F6E56; }
+  .tab[data-tab="loop"].active { background: #993556; }
+
+  /* ===== SCREEN ===== */
+  #screen { flex: 1; overflow-y: auto; padding: 16px; min-height: 0; }
+  .screen-title { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+  .screen-sub { font-size: 13px; color: #B4B2A9; margin: 0 0 16px; }
+
+  /* ===== BUTTONS ===== */
+  button { font-family: inherit; }
+  .btn {
+    border: none; border-radius: 12px; cursor: pointer; font-family: inherit;
+    font-weight: 500; transition: transform 0.08s;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn-icon {
+    width: 56px; height: 56px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; color: white;
+  }
+  .btn-big {
+    width: 120px; height: 120px; border-radius: 50%; border: 6px solid white;
+    color: white; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ===== STUDIO ===== */
+  .studio-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; }
+  .new-sound-btn {
+    background: #E24B4A; color: white; padding: 14px 20px; border-radius: 40px;
+    font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  }
+  .new-sound-btn svg { width: 18px; height: 18px; }
+  .sample-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (min-width: 600px) { .sample-grid { grid-template-columns: repeat(4, 1fr); } }
+  .sample-card {
+    border-radius: 18px; padding: 14px 10px; text-align: center; cursor: pointer;
+    border: 3px solid transparent; transition: transform 0.1s, border-color 0.15s;
+    position: relative; aspect-ratio: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .sample-card:active { transform: scale(0.95); }
+  .sample-card .emoji { font-size: 36px; margin-bottom: 4px; line-height: 1; }
+  .sample-card .name { font-size: 13px; font-weight: 600; color: #1a1530; }
+  .sample-card .duration { font-size: 10px; color: rgba(0,0,0,0.5); margin-top: 2px; }
+  .sample-card .del-btn {
+    position: absolute; top: 4px; right: 4px; width: 24px; height: 24px;
+    border-radius: 50%; background: rgba(0,0,0,0.3); color: white; border: none;
+    font-size: 14px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0.7;
+  }
+  .sample-empty {
+    border-radius: 18px; padding: 14px; text-align: center; cursor: pointer;
+    background: rgba(255,255,255,0.04); border: 2px dashed rgba(255,255,255,0.2);
+    color: #888; aspect-ratio: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .sample-empty .plus { font-size: 32px; line-height: 1; }
+  .sample-empty .lbl { font-size: 12px; margin-top: 4px; }
+
+  /* ===== DRUM ===== */
+  .drum-transport {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+    padding: 12px; background: rgba(0,0,0,0.25); border-radius: 14px;
+  }
+  .play-btn {
+    width: 56px; height: 56px; border-radius: 50%; border: none;
+    background: #BA7517; color: white; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .play-btn.playing { background: #E24B4A; }
+  .tempo-control { flex: 1; }
+  .tempo-label { font-size: 11px; color: #B4B2A9; margin-bottom: 6px; }
+  .tempo-slider-wrap { display: flex; align-items: center; gap: 8px; }
+  .tempo-slider { flex: 1; -webkit-appearance: none; appearance: none; height: 8px;
+    background: rgba(255,255,255,0.15); border-radius: 4px; outline: none;
+  }
+  .tempo-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 22px; height: 22px;
+    border-radius: 50%; background: #EF9F27; cursor: pointer; border: 2px solid white;
+  }
+  .tempo-slider::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%; background: #EF9F27;
+    cursor: pointer; border: 2px solid white;
+  }
+  .drum-grid-wrap { background: rgba(0,0,0,0.25); border-radius: 14px; padding: 10px; }
+  .drum-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .drum-row:last-child { margin-bottom: 0; }
+  .drum-sample-slot {
+    width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    font-size: 24px; border: 2px dashed rgba(255,255,255,0.2); background: rgba(255,255,255,0.05);
+    position: relative;
+  }
+  .drum-sample-slot.filled { border-color: transparent; }
+  .drum-sample-slot .mini-del {
+    position: absolute; top: -4px; right: -4px; width: 18px; height: 18px;
+    border-radius: 50%; background: #444; color: white; font-size: 11px;
+    display: flex; align-items: center; justify-content: center; border: 2px solid #1a1530;
+  }
+  .drum-steps { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; flex: 1; }
+  .drum-cell {
+    aspect-ratio: 1; border-radius: 8px; background: rgba(255,255,255,0.08);
+    cursor: pointer; border: none; transition: transform 0.05s;
+  }
+  .drum-cell.on { background: var(--cell-color, #EF9F27); }
+  .drum-cell.playing { outline: 2px solid white; outline-offset: -2px; }
+  .drum-cell:nth-child(4) { margin-right: 4px; }
+  .drum-actions { margin-top: 12px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .drum-actions button {
+    padding: 10px 14px; background: rgba(255,255,255,0.08); border: none;
+    border-radius: 10px; color: white; font-size: 13px; cursor: pointer;
+  }
+
+  /* ===== MELODY ===== */
+  .melody-sound-row { margin-bottom: 16px; }
+  .melody-sound-label { color: #B4B2A9; font-size: 12px; margin-bottom: 8px; }
+  .melody-sound-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .melody-sound-tile {
+    flex-shrink: 0; width: 60px; height: 60px; border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; border: 3px solid transparent;
+  }
+  .melody-sound-tile.active { border-color: white; }
+  .melody-sound-tile .emoji { font-size: 22px; line-height: 1; }
+  .melody-sound-tile .name { font-size: 9px; color: #1a1530; font-weight: 600; margin-top: 2px; }
+  .melody-keyboard-wrap { background: rgba(0,0,0,0.25); border-radius: 14px; padding: 12px; }
+  .octave-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .octave-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.1); color: white; font-size: 18px; cursor: pointer;
+  }
+  .octave-label { flex: 1; text-align: center; font-size: 13px; color: white; }
+  .piano { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; height: clamp(160px, 28dvh, 220px); }
+  .key {
+    border: none; border-radius: 10px; cursor: pointer; color: #1a1530;
+    font-weight: 700; font-size: 18px; display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-end; padding-bottom: 10px;
+    transition: transform 0.05s;
+  }
+  .key:active, .key.active { transform: translateY(4px); filter: brightness(0.85); }
+  .envelope-row { margin-top: 14px; padding: 12px; background: rgba(93,202,165,0.12);
+    border-radius: 12px; border-left: 4px solid #5DCAA5;
+  }
+  .envelope-label { color: white; font-size: 12px; margin-bottom: 8px; }
+  .envelope-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .env-btn {
+    padding: 8px 12px; border-radius: 10px; border: none; cursor: pointer;
+    background: rgba(255,255,255,0.08); color: white; font-size: 13px; font-weight: 500;
+  }
+  .env-btn.active { background: #5DCAA5; color: #04342C; }
+
+  /* ===== LOOP STATION ===== */
+  .loop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .loop-transport { display: flex; gap: 8px; align-items: center; }
+  .loop-tempo {
+    background: rgba(255,255,255,0.08); padding: 8px 12px; border-radius: 10px;
+    color: white; font-size: 13px; cursor: pointer;
+  }
+  .loop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .loop-slot {
+    aspect-ratio: 1; position: relative; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 50%; background: rgba(255,255,255,0.04);
+    border: 3px dashed rgba(255,255,255,0.2);
+  }
+  .loop-slot.has-audio { background: transparent; border: none; }
+  .loop-slot .loop-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .loop-slot .loop-inner {
+    position: relative; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 12px; z-index: 2;
+  }
+  .loop-slot .loop-state { font-size: 10px; font-weight: 600; letter-spacing: 1px; }
+  .loop-slot .loop-name { font-size: 13px; color: white; font-weight: 600; margin: 2px 0; }
+  .loop-slot .loop-layers { font-size: 10px; color: #B4B2A9; }
+  .loop-slot .empty-plus { font-size: 36px; color: #888; }
+  .loop-slot .empty-lbl { font-size: 11px; color: #888; margin-top: 2px; }
+  .loop-actions { margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .loop-actions button {
+    padding: 10px 14px; background: rgba(255,255,255,0.08); border: none;
+    border-radius: 10px; color: white; font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .loop-actions button svg { width: 14px; height: 14px; }
+  .loop-help {
+    margin-top: 12px; padding: 10px 12px; background: rgba(212,83,126,0.12);
+    border-radius: 0 10px 10px 0; border-left: 4px solid #D4537E;
+    color: white; font-size: 11px; line-height: 1.5;
+  }
+
+  /* ===== MODAL / OVERLAY ===== */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(15,11,36,0.96);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 20px; z-index: 50; backdrop-filter: blur(8px);
+  }
+  .overlay h2 { font-size: 24px; margin: 0 0 20px; font-weight: 600; }
+
+  /* Record overlay */
+  .rec-time { color: #B4B2A9; font-size: 14px; margin-bottom: 4px; }
+  .rec-title { color: white; font-size: 22px; font-weight: 600; margin-bottom: 24px; text-align: center; }
+  .rec-waveform {
+    width: 100%; max-width: 400px; height: 80px; display: flex;
+    align-items: center; justify-content: center; gap: 3px; margin-bottom: 32px;
+  }
+  .rec-wave-bar {
+    width: 5px; background: #E24B4A; border-radius: 3px; transition: height 0.05s;
+    min-height: 4px;
+  }
+  .rec-btn {
+    width: 120px; height: 120px; border-radius: 50%; border: 6px solid white;
+    background: #E24B4A; color: white; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; animation: pulse 1.2s ease-in-out infinite;
+  }
+  .rec-btn.idle { animation: none; }
+  .rec-btn svg { width: 42px; height: 42px; }
+  .rec-hint { color: white; font-size: 15px; margin-top: 16px; }
+  .rec-cancel {
+    margin-top: 24px; padding: 10px 22px; background: transparent;
+    border: 1px solid rgba(255,255,255,0.3); color: #B4B2A9;
+    border-radius: 10px; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(226,75,74,0.6); }
+    50% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(226,75,74,0); }
+  }
+
+  /* Device picker */
+  .device-picker {
+    position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 8px 12px; font-size: 12px; max-width: 220px;
+  }
+  .device-picker select {
+    background: transparent; color: white; border: none; font-family: inherit;
+    font-size: 12px; width: 100%; outline: none; cursor: pointer;
+  }
+  .device-picker select option { background: #1a1530; color: white; }
+
+  /* Input level meter during record */
+  .input-meter {
+    width: 180px; height: 6px; background: rgba(255,255,255,0.1);
+    border-radius: 3px; margin: 8px 0 20px; overflow: hidden; position: relative;
+  }
+  .input-meter-bar {
+    height: 100%; background: linear-gradient(90deg, #5DCAA5 0%, #5DCAA5 70%, #EF9F27 85%, #E24B4A 100%);
+    width: 0%; transition: width 0.05s;
+  }
+
+  /* Emoji picker */
+  .picker-title { color: white; font-size: 22px; font-weight: 600; margin: 0 0 8px; text-align: center; }
+  .picker-sub { color: #B4B2A9; font-size: 13px; margin-bottom: 20px; text-align: center; }
+  .picker-section { margin-bottom: 20px; width: 100%; max-width: 400px; }
+  .picker-lbl { color: #888; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+  .emoji-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .emoji-choice {
+    aspect-ratio: 1; border-radius: 12px; background: rgba(255,255,255,0.06);
+    border: 2px solid transparent; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; cursor: pointer;
+  }
+  .emoji-choice.selected { border-color: white; background: rgba(255,255,255,0.15); }
+  .color-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .color-choice {
+    aspect-ratio: 1; border-radius: 50%; cursor: pointer; border: 3px solid transparent;
+  }
+  .color-choice.selected { border-color: white; transform: scale(1.08); }
+  .name-input {
+    width: 100%; padding: 14px 16px; font-size: 17px; border-radius: 12px;
+    border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06);
+    color: white; font-family: inherit; outline: none; text-align: center;
+  }
+  .name-input:focus { border-color: #7F77DD; }
+  .picker-actions { display: flex; gap: 12px; margin-top: 20px; width: 100%; max-width: 400px; }
+  .picker-actions button {
+    flex: 1; padding: 14px; border-radius: 12px; border: none; font-family: inherit;
+    font-weight: 600; font-size: 16px; cursor: pointer;
+  }
+  .picker-cancel { background: rgba(255,255,255,0.08); color: white; }
+  .picker-save { background: #5DCAA5; color: #04342C; }
+
+  /* ===== LOOP MODE MENU ===== */
+  .loop-menu { width: 100%; max-width: 400px; }
+  .loop-menu-item {
+    width: 100%; padding: 18px 20px; margin-bottom: 10px; border-radius: 16px;
+    border: none; font-family: inherit; font-size: 16px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 14px; text-align: left;
+  }
+  .loop-menu-item svg { width: 26px; height: 26px; flex-shrink: 0; }
+  .loop-menu-item .desc { display: block; font-size: 12px; font-weight: 400; margin-top: 2px; opacity: 0.8; }
+
+  /* Status banner during loop states */
+  .status-banner {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+    padding: 10px 18px; border-radius: 30px; font-size: 13px; font-weight: 600;
+    z-index: 30; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    animation: banner-in 0.2s ease-out;
+  }
+  @keyframes banner-in { from { transform: translate(-50%, -10px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; }}
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.85); color: white; padding: 12px 20px;
+    border-radius: 30px; font-size: 14px; z-index: 200;
+    animation: toast-in 0.2s ease-out;
+  }
+  @keyframes toast-in { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; }}
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ===== START SCREEN ===== -->
+<div id="start">
+  <h1>Geluidenstudio</h1>
+  <p>Neem geluiden op met je stem of lichaam, maak er drums van of speel melodieën. Klaar om te beginnen?</p>
+  <button id="startBtn">Start</button>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="app" class="hidden">
+  <div id="tabs">
+    <button class="tab active" data-tab="studio">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Studio</span>
+    </button>
+    <button class="tab" data-tab="drum">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3"/></svg>
+      <span>Drum</span>
+    </button>
+    <button class="tab" data-tab="melody">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      <span>Melodie</span>
+    </button>
+    <button class="tab" data-tab="loop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H3"/></svg>
+      <span>Loop</span>
+    </button>
+  </div>
+
+  <div id="screen"></div>
+</div>
+
+<script>
+// =======================================================================
+//                    GELUIDENSTUDIO — werkende app
+// =======================================================================
+
+// -------- CONFIG --------
+const EMOJIS = ['😀','😗','😮','🫣','😛','🤯','👏','👋','👅','🫁','🫃','💥','💫','⭐','🔥','🎈','🎵','🐭','🐸','🐶','🐱','🎺','🥁','🔔'];
+const COLORS = ['#EF9F27','#E24B4A','#D4537E','#7F77DD','#378ADD','#5DCAA5','#97C459','#F0997B','#EDB7D1','#FAC775'];
+const NOTE_NAMES = ['C','D','E','F','G','A','B','C'];
+const NOTE_SEMITONES = [0, 2, 4, 5, 7, 9, 11, 12]; // C major
+const NOTE_COLORS = ['#E24B4A','#EF9F27','#97C459','#5DCAA5','#378ADD','#7F77DD','#D4537E','#E24B4A'];
+const ENVELOPES = {
+  kort:  { attack: 0.005, release: 0.08, label: '🥁 Kort' },
+  zacht: { attack: 0.4,   release: 0.3,  label: '🌊 Zacht' },
+  spook: { attack: 0.6,   release: 1.2,  label: '👻 Spook' },
+  galm:  { attack: 0.01,  release: 2.0,  label: '🔔 Galm' }
+};
+
+// -------- STATE --------
+const State = {
+  audioCtx: null,
+  masterGain: null,
+  samples: [],            // { id, name, emoji, color, buffer, duration }
+  activeTab: 'studio',
+  drumTracks: [
+    { sampleId: null, pattern: new Array(16).fill(false) },
+    { sampleId: null, pattern: new Array(16).fill(false) },
+    { sampleId: null, pattern: new Array(16).fill(false) },
+    { sampleId: null, pattern: new Array(16).fill(false) }
+  ],
+  drumTempo: 110,
+  drumPlaying: false,
+  drumStep: 0,
+  drumInterval: null,
+  melodySampleId: null,
+  melodyEnvelope: 'kort',
+  melodyOctave: 0, // 0 = middle, -1 lower, +1 higher
+  loopTracks: [
+    { buffer: null, layers: [], state: 'empty', name: null, lengthSec: null },
+    { buffer: null, layers: [], state: 'empty', name: null, lengthSec: null },
+    { buffer: null, layers: [], state: 'empty', name: null, lengthSec: null },
+    { buffer: null, layers: [], state: 'empty', name: null, lengthSec: null }
+  ],
+  loopBaseLength: null, // seconds; set by first recorded track
+  loopBPM: 90,
+  loopBars: 4,
+  loopPlaying: false,
+  loopStartTime: 0,
+  loopSources: [],       // currently playing source nodes
+  loopAnimFrame: null,
+  deviceId: null,
+  devices: [],
+  selectedCallback: null // used for emoji/color picker flow
+};
+
+// -------- AUDIO INIT --------
+async function initAudio() {
+  if (State.audioCtx) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  State.audioCtx = new Ctx({ latencyHint: 'interactive' });
+  State.masterGain = State.audioCtx.createGain();
+  State.masterGain.gain.value = 0.9;
+  State.masterGain.connect(State.audioCtx.destination);
+
+  // iOS Safari focus-loss fix
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && State.audioCtx.state !== 'running') {
+      State.audioCtx.resume().catch(() => {});
+    }
+  });
+}
+
+async function loadDevices() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    State.devices = devs.filter(d => d.kind === 'audioinput');
+  } catch (e) {
+    console.warn('Device listing failed', e);
+    State.devices = [];
+  }
+}
+
+// -------- STORAGE (IndexedDB) --------
+const DB_NAME = 'geluidenstudio';
+const DB_VERSION = 1;
+let dbInstance = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (dbInstance) return resolve(dbInstance);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('samples')) {
+        db.createObjectStore('samples', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => { dbInstance = req.result; resolve(dbInstance); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveSampleDB(sample) {
+  const db = await openDB();
+  const pcm = audioBufferToFloat32(sample.buffer);
+  const record = {
+    id: sample.id, name: sample.name, emoji: sample.emoji, color: sample.color,
+    sampleRate: sample.buffer.sampleRate, channels: 1, pcm, duration: sample.duration
+  };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('samples', 'readwrite');
+    tx.objectStore('samples').put(record);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadSamplesDB() {
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('samples', 'readonly');
+      const req = tx.objectStore('samples').getAll();
+      req.onsuccess = () => {
+        const out = req.result.map(r => {
+          const buf = State.audioCtx.createBuffer(1, r.pcm.length, r.sampleRate);
+          buf.copyToChannel(r.pcm, 0);
+          return { id: r.id, name: r.name, emoji: r.emoji, color: r.color, buffer: buf, duration: r.duration };
+        });
+        resolve(out);
+      };
+      req.onerror = () => resolve([]);
+    });
+  } catch (e) { return []; }
+}
+
+async function deleteSampleDB(id) {
+  const db = await openDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction('samples', 'readwrite');
+    tx.objectStore('samples').delete(id);
+    tx.oncomplete = resolve;
+    tx.onerror = resolve;
+  });
+}
+
+function audioBufferToFloat32(buffer) {
+  const data = buffer.getChannelData(0);
+  return new Float32Array(data);
+}
+
+// -------- RECORDING --------
+let recorderState = null;
+
+async function startRecording(options = {}) {
+  const maxSeconds = options.maxSeconds || 5;
+  const onFinish = options.onFinish;
+  const onCancel = options.onCancel;
+  const title = options.title || 'Maak je geluid!';
+
+  await initAudio();
+  if (State.audioCtx.state === 'suspended') await State.audioCtx.resume();
+
+  let stream;
+  try {
+    const constraints = { audio: {
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+      channelCount: 1
+    }};
+    if (State.deviceId) constraints.audio.deviceId = { exact: State.deviceId };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (e) {
+    showToast('Geen microfoon-toegang. Controleer je browser-instellingen.');
+    if (onCancel) onCancel();
+    return;
+  }
+
+  // UI overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    ${State.devices.length > 1 ? `
+      <div class="device-picker">
+        <select id="devSelect">
+          ${State.devices.map(d => `<option value="${d.deviceId}" ${d.deviceId === State.deviceId ? 'selected' : ''}>${d.label || 'Microfoon ' + d.deviceId.slice(0,4)}</option>`).join('')}
+        </select>
+      </div>
+    ` : ''}
+    <div class="rec-time"><span id="recTime">0.0</span>s / ${maxSeconds}s</div>
+    <div class="rec-title">${title}</div>
+    <div class="rec-waveform" id="recWave">
+      ${Array.from({length: 48}).map(() => '<div class="rec-wave-bar" style="height: 4px;"></div>').join('')}
+    </div>
+    <div class="input-meter"><div class="input-meter-bar" id="meterBar"></div></div>
+    <button class="rec-btn" id="recStopBtn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+    </button>
+    <div class="rec-hint">Tik om te stoppen</div>
+    <button class="rec-cancel" id="recCancelBtn">Annuleren</button>
+  `;
+  document.body.appendChild(overlay);
+
+  const waveBars = overlay.querySelectorAll('.rec-wave-bar');
+  const timeEl = overlay.querySelector('#recTime');
+  const meterBar = overlay.querySelector('#meterBar');
+
+  // Audio analysis for live waveform
+  const sourceNode = State.audioCtx.createMediaStreamSource(stream);
+  const analyser = State.audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  sourceNode.connect(analyser);
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+  // Setup MediaRecorder
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  const mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  const chunks = [];
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+  const startTime = performance.now();
+  let rafId, finished = false;
+
+  function tick() {
+    analyser.getByteTimeDomainData(dataArray);
+    // waveform update
+    const step = Math.floor(dataArray.length / waveBars.length);
+    let peak = 0;
+    for (let i = 0; i < waveBars.length; i++) {
+      const v = dataArray[i * step];
+      const amp = Math.abs((v - 128) / 128);
+      const h = Math.max(4, amp * 70);
+      waveBars[i].style.height = h + 'px';
+      if (amp > peak) peak = amp;
+    }
+    meterBar.style.width = Math.min(100, peak * 150) + '%';
+
+    const elapsed = (performance.now() - startTime) / 1000;
+    timeEl.textContent = elapsed.toFixed(1);
+    if (elapsed >= maxSeconds && !finished) { finish(); return; }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  mediaRecorder.start();
+  tick();
+
+  function cleanup() {
+    cancelAnimationFrame(rafId);
+    stream.getTracks().forEach(t => t.stop());
+    overlay.remove();
+  }
+
+  async function finish() {
+    if (finished) return;
+    finished = true;
+    cancelAnimationFrame(rafId);
+    await new Promise(resolve => {
+      mediaRecorder.onstop = resolve;
+      mediaRecorder.stop();
+    });
+    const blob = new Blob(chunks, { type: mime || 'audio/webm' });
+    const arrayBuffer = await blob.arrayBuffer();
+    try {
+      const buffer = await State.audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      cleanup();
+      if (onFinish) onFinish(buffer);
+    } catch (e) {
+      console.error('Decode failed', e);
+      cleanup();
+      showToast('Kon de opname niet verwerken');
+      if (onCancel) onCancel();
+    }
+  }
+
+  overlay.querySelector('#recStopBtn').onclick = finish;
+  overlay.querySelector('#recCancelBtn').onclick = () => {
+    mediaRecorder.onstop = () => {};
+    try { mediaRecorder.stop(); } catch(e) {}
+    cleanup();
+    if (onCancel) onCancel();
+  };
+  const devSel = overlay.querySelector('#devSelect');
+  if (devSel) devSel.onchange = async (e) => {
+    State.deviceId = e.target.value;
+    // Restart with new device
+    try { mediaRecorder.stop(); } catch(e) {}
+    cleanup();
+    startRecording(options);
+  };
+
+  recorderState = { cleanup, finish };
+}
+
+// -------- SAMPLE CREATION FLOW --------
+function showEmojiNamePicker(buffer, onSave, onCancel) {
+  const defaultName = 'Geluid ' + (State.samples.length + 1);
+  let selectedEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+  let selectedColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+  let selectedName = defaultName;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.style.justifyContent = 'flex-start';
+  overlay.style.paddingTop = '40px';
+  overlay.style.overflowY = 'auto';
+  overlay.innerHTML = `
+    <h2 class="picker-title">Maak je geluid af!</h2>
+    <p class="picker-sub">Geef het een naam, icoontje en kleur</p>
+
+    <div class="picker-section">
+      <div class="picker-lbl">Naam</div>
+      <input type="text" class="name-input" id="nameInput" value="${defaultName}" maxlength="14" />
+    </div>
+
+    <div class="picker-section">
+      <div class="picker-lbl">Icoontje</div>
+      <div class="emoji-grid" id="emojiGrid">
+        ${EMOJIS.map(e => `<button class="emoji-choice ${e === selectedEmoji ? 'selected' : ''}" data-emoji="${e}">${e}</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="picker-section">
+      <div class="picker-lbl">Kleur</div>
+      <div class="color-grid" id="colorGrid">
+        ${COLORS.map(c => `<button class="color-choice ${c === selectedColor ? 'selected' : ''}" data-color="${c}" style="background:${c};"></button>`).join('')}
+      </div>
+    </div>
+
+    <div class="picker-section" style="text-align: center;">
+      <button id="previewBtn" style="padding: 10px 20px; border-radius: 30px; border: none; background: rgba(255,255,255,0.1); color: white; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer;">
+        ▶ Luister nog eens
+      </button>
+    </div>
+
+    <div class="picker-actions">
+      <button class="picker-cancel" id="pkCancel">Annuleren</button>
+      <button class="picker-save" id="pkSave">Opslaan</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const nameInput = overlay.querySelector('#nameInput');
+  nameInput.oninput = () => { selectedName = nameInput.value.trim() || defaultName; };
+  nameInput.onfocus = () => nameInput.select();
+
+  overlay.querySelectorAll('.emoji-choice').forEach(btn => {
+    btn.onclick = () => {
+      overlay.querySelectorAll('.emoji-choice').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedEmoji = btn.dataset.emoji;
+    };
+  });
+  overlay.querySelectorAll('.color-choice').forEach(btn => {
+    btn.onclick = () => {
+      overlay.querySelectorAll('.color-choice').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedColor = btn.dataset.color;
+    };
+  });
+
+  overlay.querySelector('#previewBtn').onclick = () => {
+    const src = State.audioCtx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(State.masterGain);
+    src.start();
+  };
+
+  overlay.querySelector('#pkCancel').onclick = () => { overlay.remove(); if (onCancel) onCancel(); };
+  overlay.querySelector('#pkSave').onclick = () => {
+    overlay.remove();
+    onSave({
+      id: 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      name: selectedName, emoji: selectedEmoji, color: selectedColor,
+      buffer, duration: buffer.duration
+    });
+  };
+}
+
+async function recordNewSample(onDone) {
+  await initAudio();
+  startRecording({
+    maxSeconds: 5,
+    title: 'Maak je geluid!',
+    onFinish: (buffer) => {
+      showEmojiNamePicker(buffer, async (sample) => {
+        State.samples.push(sample);
+        await saveSampleDB(sample);
+        showToast('Opgeslagen: ' + sample.name);
+        if (onDone) onDone(sample);
+        renderCurrentScreen();
+      }, () => {});
+    }
+  });
+}
+
+// -------- PLAYBACK HELPERS --------
+function playSample(sample, opts = {}) {
+  if (!sample || !sample.buffer) return null;
+  const src = State.audioCtx.createBufferSource();
+  src.buffer = sample.buffer;
+  const playbackRate = opts.playbackRate || 1;
+  src.playbackRate.value = playbackRate;
+  const gain = State.audioCtx.createGain();
+  const now = State.audioCtx.currentTime;
+  const env = opts.envelope || { attack: 0.005, release: 0.05 };
+  const peak = opts.gain || 1;
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(peak, now + env.attack);
+  const duration = sample.buffer.duration / playbackRate;
+  const sustainEnd = now + Math.max(env.attack + 0.02, duration - env.release);
+  gain.gain.setValueAtTime(peak, sustainEnd);
+  gain.gain.linearRampToValueAtTime(0, sustainEnd + env.release);
+  src.connect(gain);
+  gain.connect(State.masterGain);
+  src.start(now);
+  src.stop(sustainEnd + env.release + 0.05);
+  return src;
+}
+
+function getSample(id) { return State.samples.find(s => s.id === id); }
+
+// -------- TAB SWITCHING --------
+function setTab(name) {
+  State.activeTab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  if (State.drumPlaying && name !== 'drum') stopDrum();
+  if (State.loopPlaying && name !== 'loop') stopLoopPlayback();
+  renderCurrentScreen();
+}
+
+function renderCurrentScreen() {
+  const screen = document.getElementById('screen');
+  screen.innerHTML = '';
+  ({
+    studio: renderStudio, drum: renderDrum, melody: renderMelody, loop: renderLoop
+  })[State.activeTab]();
+}
+
+// -------- STUDIO --------
+function renderStudio() {
+  const screen = document.getElementById('screen');
+  const header = document.createElement('div');
+  header.className = 'studio-header';
+  header.innerHTML = `
+    <div>
+      <h2 class="screen-title">Mijn geluiden</h2>
+      <p class="screen-sub">${State.samples.length === 0 ? 'Neem je eerste geluid op!' : 'Tik om te luisteren'}</p>
+    </div>
+    <button class="btn new-sound-btn" id="newBtn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>
+      Nieuw
+    </button>
+  `;
+  screen.appendChild(header);
+
+  const grid = document.createElement('div');
+  grid.className = 'sample-grid';
+  State.samples.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'sample-card';
+    card.style.background = s.color;
+    card.innerHTML = `
+      <button class="del-btn" data-id="${s.id}">×</button>
+      <div class="emoji">${s.emoji}</div>
+      <div class="name">${s.name}</div>
+      <div class="duration">${s.duration.toFixed(1)}s</div>
+    `;
+    card.onclick = (e) => {
+      if (e.target.classList.contains('del-btn')) return;
+      playSample(s);
+    };
+    card.querySelector('.del-btn').onclick = async (e) => {
+      e.stopPropagation();
+      if (confirm('Geluid verwijderen: ' + s.name + '?')) {
+        State.samples = State.samples.filter(x => x.id !== s.id);
+        // Clean up references
+        State.drumTracks.forEach(t => { if (t.sampleId === s.id) t.sampleId = null; });
+        if (State.melodySampleId === s.id) State.melodySampleId = null;
+        await deleteSampleDB(s.id);
+        renderCurrentScreen();
+      }
+    };
+    grid.appendChild(card);
+  });
+
+  // Empty slot
+  const empty = document.createElement('div');
+  empty.className = 'sample-empty';
+  empty.innerHTML = `<div class="plus">+</div><div class="lbl">Nieuw</div>`;
+  empty.onclick = () => recordNewSample();
+  grid.appendChild(empty);
+  screen.appendChild(grid);
+
+  document.getElementById('newBtn').onclick = () => recordNewSample();
+
+  if (State.samples.length === 0) {
+    const tip = document.createElement('div');
+    tip.style.cssText = 'margin-top: 20px; padding: 14px; background: rgba(127,119,221,0.15); border-radius: 0 12px 12px 0; border-left: 4px solid #7F77DD;';
+    tip.innerHTML = `<div style="color: white; font-size: 13px; line-height: 1.5;">Tik op <strong>Nieuw</strong> om je eerste geluid op te nemen. Gebruik je stem, een klap, of iets anders!</div>`;
+    screen.appendChild(tip);
+  }
+}
+
+// -------- DRUM --------
+function renderDrum() {
+  const screen = document.getElementById('screen');
+  screen.innerHTML = `
+    <div class="drum-transport">
+      <button class="play-btn ${State.drumPlaying ? 'playing' : ''}" id="drumPlay">
+        ${State.drumPlaying
+          ? '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
+          : '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'}
+      </button>
+      <div class="tempo-control">
+        <div class="tempo-label">Snelheid · ${State.drumTempo} BPM</div>
+        <div class="tempo-slider-wrap">
+          <span style="font-size: 20px;">🐢</span>
+          <input type="range" class="tempo-slider" id="drumTempo" min="60" max="180" value="${State.drumTempo}" />
+          <span style="font-size: 20px;">🐇</span>
+        </div>
+      </div>
+    </div>
+    <div class="drum-grid-wrap" id="drumGrid"></div>
+    <div class="drum-actions">
+      <button id="drumClear">Alles wissen</button>
+    </div>
+  `;
+
+  renderDrumGrid();
+
+  document.getElementById('drumPlay').onclick = () => State.drumPlaying ? stopDrum() : startDrum();
+  document.getElementById('drumTempo').oninput = (e) => {
+    State.drumTempo = parseInt(e.target.value);
+    document.querySelector('.tempo-label').textContent = `Snelheid · ${State.drumTempo} BPM`;
+    if (State.drumPlaying) { stopDrum(); startDrum(); }
+  };
+  document.getElementById('drumClear').onclick = () => {
+    if (confirm('Alle beats wissen?')) {
+      State.drumTracks.forEach(t => t.pattern.fill(false));
+      renderDrumGrid();
+    }
+  };
+}
+
+function renderDrumGrid() {
+  const grid = document.getElementById('drumGrid');
+  if (!grid) return;
+  grid.innerHTML = State.drumTracks.map((track, ti) => {
+    const sample = getSample(track.sampleId);
+    const slotHtml = sample
+      ? `<div class="drum-sample-slot filled" style="background:${sample.color}" data-track="${ti}">
+           ${sample.emoji}
+           <button class="mini-del" data-track="${ti}" data-action="removeSample">×</button>
+         </div>`
+      : `<div class="drum-sample-slot" data-track="${ti}">+</div>`;
+    const color = sample ? sample.color : '#EF9F27';
+    return `
+      <div class="drum-row">
+        ${slotHtml}
+        <div class="drum-steps" style="--cell-color:${color}">
+          ${track.pattern.slice(0, 16).map((on, si) => `
+            <button class="drum-cell ${on ? 'on' : ''}" data-track="${ti}" data-step="${si}"></button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.drum-cell').forEach(cell => {
+    cell.onclick = () => {
+      const ti = +cell.dataset.track, si = +cell.dataset.step;
+      State.drumTracks[ti].pattern[si] = !State.drumTracks[ti].pattern[si];
+      cell.classList.toggle('on');
+      // Preview sound
+      if (State.drumTracks[ti].pattern[si]) {
+        const s = getSample(State.drumTracks[ti].sampleId);
+        if (s) playSample(s);
+      }
+    };
+  });
+
+  grid.querySelectorAll('.drum-sample-slot').forEach(slot => {
+    slot.onclick = (e) => {
+      if (e.target.dataset.action === 'removeSample') {
+        State.drumTracks[+e.target.dataset.track].sampleId = null;
+        renderDrumGrid();
+        return;
+      }
+      chooseSampleForDrumSlot(+slot.dataset.track);
+    };
+  });
+}
+
+function chooseSampleForDrumSlot(trackIdx) {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.style.justifyContent = 'flex-start';
+  overlay.style.paddingTop = '40px';
+  overlay.style.overflowY = 'auto';
+  const samples = State.samples;
+  overlay.innerHTML = `
+    <h2 class="picker-title">Kies een geluid</h2>
+    <p class="picker-sub">voor rij ${trackIdx + 1}</p>
+    ${samples.length === 0
+      ? `<p style="color:#B4B2A9; text-align:center; margin: 30px 0;">Je hebt nog geen geluiden.<br>Ga eerst naar Studio om op te nemen.</p>`
+      : `<div class="sample-grid" style="width: 100%; max-width: 500px;">
+          ${samples.map(s => `
+            <div class="sample-card" data-id="${s.id}" style="background:${s.color};">
+              <div class="emoji">${s.emoji}</div>
+              <div class="name">${s.name}</div>
+            </div>
+          `).join('')}
+          <div class="sample-empty" id="recNewInDrum">
+            <div class="plus">+</div><div class="lbl">Nieuw geluid</div>
+          </div>
+        </div>`
+    }
+    <button class="rec-cancel" style="margin-top: 24px;" id="dsCancel">Annuleren</button>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelectorAll('.sample-card').forEach(card => {
+    card.onclick = () => {
+      State.drumTracks[trackIdx].sampleId = card.dataset.id;
+      overlay.remove();
+      renderDrumGrid();
+      // Preview
+      const s = getSample(card.dataset.id);
+      if (s) playSample(s);
+    };
+  });
+  const recNew = overlay.querySelector('#recNewInDrum');
+  if (recNew) recNew.onclick = () => {
+    overlay.remove();
+    recordNewSample((sample) => {
+      State.drumTracks[trackIdx].sampleId = sample.id;
+      renderCurrentScreen();
+    });
+  };
+  overlay.querySelector('#dsCancel').onclick = () => overlay.remove();
+}
+
+function startDrum() {
+  State.drumPlaying = true;
+  State.drumStep = 0;
+  const stepMs = 60000 / State.drumTempo / 4; // 16th notes
+  const tick = () => {
+    const step = State.drumStep;
+    State.drumTracks.forEach(t => {
+      if (t.pattern[step]) {
+        const s = getSample(t.sampleId);
+        if (s) playSample(s);
+      }
+    });
+    // highlight UI
+    document.querySelectorAll('.drum-cell').forEach(c => c.classList.remove('playing'));
+    document.querySelectorAll(`.drum-cell[data-step="${step}"]`).forEach(c => c.classList.add('playing'));
+    State.drumStep = (State.drumStep + 1) % 16;
+  };
+  tick();
+  State.drumInterval = setInterval(tick, stepMs);
+  // update button
+  const btn = document.getElementById('drumPlay');
+  if (btn) {
+    btn.classList.add('playing');
+    btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
+  }
+}
+
+function stopDrum() {
+  clearInterval(State.drumInterval);
+  State.drumInterval = null;
+  State.drumPlaying = false;
+  document.querySelectorAll('.drum-cell.playing').forEach(c => c.classList.remove('playing'));
+  const btn = document.getElementById('drumPlay');
+  if (btn) {
+    btn.classList.remove('playing');
+    btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  }
+}
+
+// -------- MELODY --------
+function renderMelody() {
+  const screen = document.getElementById('screen');
+  const activeSample = getSample(State.melodySampleId) || State.samples[0];
+  if (activeSample && !State.melodySampleId) State.melodySampleId = activeSample.id;
+
+  screen.innerHTML = `
+    <div class="melody-sound-row">
+      <div class="melody-sound-label">Welk geluid wil je bespelen?</div>
+      <div class="melody-sound-scroll" id="melodySounds">
+        ${State.samples.map(s => `
+          <div class="melody-sound-tile ${s.id === State.melodySampleId ? 'active' : ''}" data-id="${s.id}" style="background:${s.color};">
+            <div class="emoji">${s.emoji}</div>
+            <div class="name">${s.name}</div>
+          </div>
+        `).join('')}
+        <div class="melody-sound-tile" id="melodyAdd" style="background: rgba(255,255,255,0.05); border: 2px dashed rgba(255,255,255,0.25);">
+          <div class="emoji" style="color:#888; font-size:24px;">+</div>
+          <div class="name" style="color:#888;">Nieuw</div>
+        </div>
+      </div>
+    </div>
+
+    ${State.samples.length === 0 ? `
+      <div style="text-align:center; padding: 40px 20px; color: #B4B2A9;">
+        <div style="font-size: 40px; margin-bottom: 12px;">🎤</div>
+        <p>Neem eerst een geluid op in Studio om te kunnen spelen.</p>
+      </div>
+    ` : `
+      <div class="melody-keyboard-wrap">
+        <div class="octave-row">
+          <button class="octave-btn" id="octDown">−</button>
+          <div class="octave-label">${State.melodyOctave === 0 ? 'Midden' : State.melodyOctave > 0 ? 'Hoger (+' + State.melodyOctave + ')' : 'Lager (' + State.melodyOctave + ')'}</div>
+          <button class="octave-btn" id="octUp">+</button>
+        </div>
+        <div class="piano" id="piano">
+          ${NOTE_NAMES.map((n, i) => `
+            <button class="key" data-idx="${i}" style="background:${NOTE_COLORS[i]};">${n}</button>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="envelope-row">
+        <div class="envelope-label">Karakter van het geluid</div>
+        <div class="envelope-btns">
+          ${Object.entries(ENVELOPES).map(([key, env]) => `
+            <button class="env-btn ${key === State.melodyEnvelope ? 'active' : ''}" data-env="${key}">${env.label}</button>
+          `).join('')}
+        </div>
+      </div>
+    `}
+  `;
+
+  document.querySelectorAll('.melody-sound-tile[data-id]').forEach(tile => {
+    tile.onclick = () => {
+      State.melodySampleId = tile.dataset.id;
+      renderMelody();
+    };
+  });
+  const addBtn = document.getElementById('melodyAdd');
+  if (addBtn) addBtn.onclick = () => recordNewSample((s) => {
+    State.melodySampleId = s.id;
+    renderCurrentScreen();
+  });
+
+  document.querySelectorAll('.key').forEach(key => {
+    const play = () => {
+      const idx = +key.dataset.idx;
+      const semitones = NOTE_SEMITONES[idx] + State.melodyOctave * 12;
+      const rate = Math.pow(2, semitones / 12);
+      const s = getSample(State.melodySampleId);
+      if (s) playSample(s, { playbackRate: rate, envelope: ENVELOPES[State.melodyEnvelope] });
+      key.classList.add('active');
+      setTimeout(() => key.classList.remove('active'), 120);
+    };
+    key.onmousedown = play;
+    key.ontouchstart = (e) => { e.preventDefault(); play(); };
+  });
+
+  document.querySelectorAll('.env-btn').forEach(btn => {
+    btn.onclick = () => {
+      State.melodyEnvelope = btn.dataset.env;
+      renderMelody();
+    };
+  });
+
+  const oUp = document.getElementById('octUp');
+  const oDown = document.getElementById('octDown');
+  if (oUp) oUp.onclick = () => { State.melodyOctave = Math.min(2, State.melodyOctave + 1); renderMelody(); };
+  if (oDown) oDown.onclick = () => { State.melodyOctave = Math.max(-2, State.melodyOctave - 1); renderMelody(); };
+}
+
+// -------- LOOP STATION --------
+// States: empty | recording | playing | overdub
+function renderLoop() {
+  const screen = document.getElementById('screen');
+  screen.innerHTML = `
+    <div class="loop-header">
+      <div>
+        <h2 class="screen-title">Loop Station</h2>
+        <p class="screen-sub">Neem op · speel · overdub</p>
+      </div>
+      <div class="loop-transport">
+        <button class="loop-tempo" id="loopTempoBtn">
+          ♩ ${State.loopBPM} · ${State.loopBars} tellen
+        </button>
+        <button class="play-btn" id="loopPlayBtn" style="width:48px;height:48px;background:${State.loopPlaying ? '#E24B4A' : '#993556'}">
+          ${State.loopPlaying
+            ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
+            : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'}
+        </button>
+      </div>
+    </div>
+    <div class="loop-grid" id="loopGrid"></div>
+    <div class="loop-actions">
+      <button id="loopClearAll">Alles wissen</button>
+    </div>
+    <div class="loop-help">
+      <strong>Hoe het werkt:</strong>
+      Tik op een lege cirkel → kies 'Opnemen'. De eerste opname bepaalt de loop-lengte. Klaar? De loop speelt vanzelf af. Tik nogmaals om een extra laag er <em>over</em> heen op te nemen. Lang indrukken = wissen.
+    </div>
+  `;
+
+  renderLoopGrid();
+
+  document.getElementById('loopTempoBtn').onclick = () => openLoopTempoEditor();
+  document.getElementById('loopPlayBtn').onclick = () => {
+    if (State.loopPlaying) stopLoopPlayback(); else startLoopPlayback();
+  };
+  document.getElementById('loopClearAll').onclick = () => {
+    if (confirm('Alle loops wissen?')) {
+      stopLoopPlayback();
+      State.loopTracks.forEach(t => { t.buffer = null; t.layers = []; t.state = 'empty'; t.name = null; t.lengthSec = null; });
+      State.loopBaseLength = null;
+      renderLoopGrid();
+    }
+  };
+}
+
+function renderLoopGrid() {
+  const grid = document.getElementById('loopGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  State.loopTracks.forEach((track, idx) => {
+    const slot = document.createElement('div');
+    slot.className = 'loop-slot' + (track.buffer ? ' has-audio' : '');
+    const isPlaying = State.loopPlaying && track.buffer;
+    const stateLabel = track.buffer ? (isPlaying ? 'SPEELT' : 'KLAAR') : '';
+    const color = track.buffer ? '#97C459' : '#888';
+
+    if (track.buffer) {
+      slot.innerHTML = `
+        <svg class="loop-svg" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="46" fill="rgba(151,196,89,0.1)" stroke="rgba(255,255,255,0.08)" stroke-width="3"/>
+          <circle cx="50" cy="50" r="46" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round"
+            stroke-dasharray="${2 * Math.PI * 46}" stroke-dashoffset="${2 * Math.PI * 46}"
+            id="loopProg${idx}" transform="rotate(-90 50 50)"/>
+        </svg>
+        <div class="loop-inner">
+          <div class="loop-state" style="color:${color};">${stateLabel}</div>
+          <div class="loop-name">${track.name || 'Track ' + (idx+1)}</div>
+          <div class="loop-layers">${track.layers.length} ${track.layers.length === 1 ? 'laag' : 'lagen'}</div>
+        </div>
+      `;
+    } else {
+      slot.innerHTML = `
+        <div class="loop-inner">
+          <div class="empty-plus">+</div>
+          <div class="empty-lbl">Track ${idx+1}</div>
+        </div>
+      `;
+    }
+
+    // Short tap = action menu, long press = clear
+    let pressTimer = null;
+    let longPressed = false;
+    const startPress = (e) => {
+      longPressed = false;
+      pressTimer = setTimeout(() => {
+        longPressed = true;
+        if (track.buffer) {
+          if (confirm('Track ' + (idx+1) + ' wissen?')) clearLoopTrack(idx);
+        }
+      }, 700);
+    };
+    const endPress = (e) => {
+      clearTimeout(pressTimer);
+      if (!longPressed) openLoopTrackMenu(idx);
+    };
+    const cancelPress = () => { clearTimeout(pressTimer); longPressed = true; };
+
+    slot.addEventListener('mousedown', startPress);
+    slot.addEventListener('mouseup', endPress);
+    slot.addEventListener('mouseleave', cancelPress);
+    slot.addEventListener('touchstart', (e) => { e.preventDefault(); startPress(e); });
+    slot.addEventListener('touchend', (e) => { e.preventDefault(); endPress(e); });
+    slot.addEventListener('touchcancel', cancelPress);
+
+    grid.appendChild(slot);
+  });
+}
+
+function openLoopTrackMenu(idx) {
+  const track = State.loopTracks[idx];
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+
+  const hasAudio = !!track.buffer;
+
+  overlay.innerHTML = `
+    <h2 class="picker-title">Track ${idx + 1}</h2>
+    <p class="picker-sub">${hasAudio ? track.layers.length + ' ' + (track.layers.length === 1 ? 'laag opgenomen' : 'lagen opgenomen') : 'Nog leeg'}</p>
+    <div class="loop-menu">
+      ${!hasAudio ? `
+        <button class="loop-menu-item" data-action="record" style="background:#E24B4A; color:white;">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>
+          <div>Opnemen<span class="desc">${State.loopBaseLength ? 'Volgt lengte van eerste track (' + State.loopBaseLength.toFixed(1) + 's)' : 'Bepaalt de lengte · ' + State.loopBars + ' tellen @ ' + State.loopBPM + ' BPM'}</span></div>
+        </button>
+      ` : `
+        <button class="loop-menu-item" data-action="overdub" style="background:#BA7517; color:white;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          <div>Overdub<span class="desc">Neem een nieuwe laag op over deze loop</span></div>
+        </button>
+        <button class="loop-menu-item" data-action="replace" style="background:#993556; color:white;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6M3 13a9 9 0 103-7.7L3 8"/></svg>
+          <div>Opnieuw opnemen<span class="desc">Vervang deze track volledig</span></div>
+        </button>
+        ${track.layers.length > 1 ? `
+          <button class="loop-menu-item" data-action="undo" style="background:rgba(255,255,255,0.1); color:white;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6M3 13a9 9 0 103-7.7L3 8"/></svg>
+            <div>Laatste laag weg<span class="desc">Verwijder alleen de nieuwste overdub</span></div>
+          </button>
+        ` : ''}
+        <button class="loop-menu-item" data-action="clear" style="background:rgba(255,255,255,0.1); color:white;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+          <div>Track wissen<span class="desc">Alle lagen weg</span></div>
+        </button>
+      `}
+    </div>
+    <button class="rec-cancel" id="menuCancel">Sluiten</button>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelectorAll('[data-action]').forEach(btn => {
+    btn.onclick = () => {
+      const action = btn.dataset.action;
+      overlay.remove();
+      if (action === 'record') doLoopRecord(idx, false);
+      else if (action === 'overdub') doLoopRecord(idx, true);
+      else if (action === 'replace') {
+        if (confirm('Deze track overschrijven?')) {
+          clearLoopTrack(idx);
+          doLoopRecord(idx, false);
+        }
+      } else if (action === 'undo') undoLastLayer(idx);
+      else if (action === 'clear') {
+        if (confirm('Track wissen?')) clearLoopTrack(idx);
+      }
+    };
+  });
+  overlay.querySelector('#menuCancel').onclick = () => overlay.remove();
+}
+
+function openLoopTempoEditor() {
+  if (State.loopBaseLength) {
+    showToast('Lengte is al vastgezet door eerste track');
+    return;
+  }
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <h2 class="picker-title">Tempo & lengte</h2>
+    <p class="picker-sub">Stel in voordat je de eerste track opneemt</p>
+    <div class="picker-section">
+      <div class="picker-lbl">Tempo · <span id="bpmVal">${State.loopBPM}</span> BPM</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:20px;">🐢</span>
+        <input type="range" class="tempo-slider" id="bpmSlider" min="60" max="160" value="${State.loopBPM}" style="flex:1;" />
+        <span style="font-size:20px;">🐇</span>
+      </div>
+    </div>
+    <div class="picker-section">
+      <div class="picker-lbl">Lengte</div>
+      <div style="display:flex;gap:8px;">
+        ${[2,4,8].map(b => `
+          <button class="btn" data-bars="${b}" style="flex:1;padding:14px;background:${b===State.loopBars?'#D4537E':'rgba(255,255,255,0.08)'};color:white;border:none;font-family:inherit;font-size:15px;font-weight:600;">
+            ${b} tellen
+          </button>
+        `).join('')}
+      </div>
+    </div>
+    <div style="color:#B4B2A9;font-size:13px;text-align:center;margin:8px 0;">
+      = <span id="lengthPreview">${(60/State.loopBPM * State.loopBars).toFixed(1)}</span> seconden per loop
+    </div>
+    <div class="picker-actions">
+      <button class="picker-save" id="tempoSave">OK</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const update = () => {
+    document.getElementById('bpmVal').textContent = State.loopBPM;
+    document.getElementById('lengthPreview').textContent = (60/State.loopBPM * State.loopBars).toFixed(1);
+  };
+  overlay.querySelector('#bpmSlider').oninput = (e) => { State.loopBPM = +e.target.value; update(); };
+  overlay.querySelectorAll('[data-bars]').forEach(b => b.onclick = () => {
+    State.loopBars = +b.dataset.bars;
+    overlay.querySelectorAll('[data-bars]').forEach(x => x.style.background = 'rgba(255,255,255,0.08)');
+    b.style.background = '#D4537E';
+    update();
+  });
+  overlay.querySelector('#tempoSave').onclick = () => { overlay.remove(); renderLoop(); };
+}
+
+async function doLoopRecord(trackIdx, isOverdub) {
+  await initAudio();
+  const targetLength = State.loopBaseLength || (60 / State.loopBPM * State.loopBars);
+  const recordLength = targetLength + 0.3; // slight buffer
+
+  // If overdub, start loop playback so user hears existing loop
+  let playbackStarted = false;
+  if (isOverdub && State.loopTracks[trackIdx].buffer) {
+    startLoopPlayback();
+    playbackStarted = true;
+  }
+
+  // Countdown banner (2-1-GO)
+  await loopCountdown(targetLength);
+
+  startRecording({
+    maxSeconds: Math.min(recordLength, 12),
+    title: isOverdub ? 'Overdub: speel over de loop!' : 'Neem je loop op',
+    onFinish: async (buffer) => {
+      // Trim to exact length
+      const trimmed = trimBuffer(buffer, targetLength);
+      if (isOverdub) {
+        State.loopTracks[trackIdx].layers.push(trimmed);
+        State.loopTracks[trackIdx].buffer = mixLayers(State.loopTracks[trackIdx].layers);
+        showToast('Laag toegevoegd');
+      } else {
+        State.loopTracks[trackIdx].layers = [trimmed];
+        State.loopTracks[trackIdx].buffer = trimmed;
+        State.loopTracks[trackIdx].name = 'Track ' + (trackIdx + 1);
+        State.loopTracks[trackIdx].lengthSec = targetLength;
+        if (!State.loopBaseLength) State.loopBaseLength = targetLength;
+        showToast('Track opgenomen');
+      }
+      // Restart playback to include new content
+      if (State.loopPlaying) { stopLoopPlayback(); startLoopPlayback(); }
+      else if (playbackStarted) { /* already started */ }
+      else { startLoopPlayback(); }
+      renderLoopGrid();
+    },
+    onCancel: () => {
+      if (playbackStarted) stopLoopPlayback();
+    }
+  });
+}
+
+function loopCountdown(lengthSec) {
+  return new Promise((resolve) => {
+    const banner = document.createElement('div');
+    banner.className = 'status-banner';
+    banner.style.background = '#E24B4A';
+    banner.style.color = 'white';
+    banner.textContent = '3';
+    document.body.appendChild(banner);
+    let n = 3;
+    const beat = () => {
+      const osc = State.audioCtx.createOscillator();
+      const g = State.audioCtx.createGain();
+      osc.frequency.value = n === 0 ? 880 : 440;
+      g.gain.setValueAtTime(0, State.audioCtx.currentTime);
+      g.gain.linearRampToValueAtTime(0.3, State.audioCtx.currentTime + 0.005);
+      g.gain.linearRampToValueAtTime(0, State.audioCtx.currentTime + 0.08);
+      osc.connect(g); g.connect(State.masterGain);
+      osc.start(); osc.stop(State.audioCtx.currentTime + 0.1);
+    };
+    beat();
+    const iv = setInterval(() => {
+      n--;
+      if (n > 0) { banner.textContent = n; beat(); }
+      else if (n === 0) { banner.textContent = 'GO!'; banner.style.background = '#5DCAA5'; beat(); }
+      else { clearInterval(iv); banner.remove(); resolve(); }
+    }, 600);
+  });
+}
+
+function trimBuffer(buffer, seconds) {
+  const samplesCount = Math.floor(seconds * buffer.sampleRate);
+  const out = State.audioCtx.createBuffer(1, samplesCount, buffer.sampleRate);
+  const inData = buffer.getChannelData(0);
+  const outData = out.getChannelData(0);
+  for (let i = 0; i < samplesCount && i < inData.length; i++) outData[i] = inData[i];
+  // short fade at end to avoid click
+  const fade = Math.min(256, samplesCount);
+  for (let i = 0; i < fade; i++) {
+    outData[samplesCount - 1 - i] *= (i / fade);
+  }
+  return out;
+}
+
+function mixLayers(layers) {
+  if (layers.length === 0) return null;
+  if (layers.length === 1) return layers[0];
+  const first = layers[0];
+  const length = first.length;
+  const out = State.audioCtx.createBuffer(1, length, first.sampleRate);
+  const outData = out.getChannelData(0);
+  const n = layers.length;
+  layers.forEach(layer => {
+    const d = layer.getChannelData(0);
+    for (let i = 0; i < length; i++) outData[i] += (d[i] || 0);
+  });
+  // Soft compression to avoid clipping
+  for (let i = 0; i < length; i++) {
+    const v = outData[i];
+    outData[i] = Math.tanh(v * 0.8);
+  }
+  return out;
+}
+
+function clearLoopTrack(idx) {
+  const t = State.loopTracks[idx];
+  t.buffer = null; t.layers = []; t.state = 'empty'; t.name = null; t.lengthSec = null;
+  // if all tracks empty, reset base length
+  if (State.loopTracks.every(x => !x.buffer)) State.loopBaseLength = null;
+  renderLoopGrid();
+  if (State.loopPlaying) { stopLoopPlayback(); startLoopPlayback(); }
+}
+
+function undoLastLayer(idx) {
+  const t = State.loopTracks[idx];
+  if (t.layers.length <= 1) return;
+  t.layers.pop();
+  t.buffer = mixLayers(t.layers);
+  renderLoopGrid();
+  if (State.loopPlaying) { stopLoopPlayback(); startLoopPlayback(); }
+}
+
+function startLoopPlayback() {
+  if (State.loopPlaying) return;
+  if (!State.loopBaseLength) return;
+  State.loopPlaying = true;
+  State.loopStartTime = State.audioCtx.currentTime;
+
+  const scheduleAll = (offset) => {
+    State.loopTracks.forEach(t => {
+      if (!t.buffer) return;
+      const src = State.audioCtx.createBufferSource();
+      src.buffer = t.buffer;
+      src.loop = true;
+      src.connect(State.masterGain);
+      src.start(State.audioCtx.currentTime + offset);
+      State.loopSources.push(src);
+    });
+  };
+  scheduleAll(0);
+
+  // Progress animation
+  const animate = () => {
+    if (!State.loopPlaying) return;
+    const elapsed = (State.audioCtx.currentTime - State.loopStartTime) % State.loopBaseLength;
+    const progress = elapsed / State.loopBaseLength;
+    State.loopTracks.forEach((t, idx) => {
+      if (!t.buffer) return;
+      const prog = document.getElementById('loopProg' + idx);
+      if (prog) {
+        const circ = 2 * Math.PI * 46;
+        prog.setAttribute('stroke-dashoffset', circ * (1 - progress));
+      }
+    });
+    State.loopAnimFrame = requestAnimationFrame(animate);
+  };
+  animate();
+
+  // Update button
+  const btn = document.getElementById('loopPlayBtn');
+  if (btn) {
+    btn.style.background = '#E24B4A';
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+  }
+  document.querySelectorAll('.loop-slot .loop-state').forEach(el => {
+    if (el.textContent === 'KLAAR') el.textContent = 'SPEELT';
+  });
+}
+
+function stopLoopPlayback() {
+  State.loopPlaying = false;
+  State.loopSources.forEach(s => { try { s.stop(); } catch(e) {} });
+  State.loopSources = [];
+  if (State.loopAnimFrame) { cancelAnimationFrame(State.loopAnimFrame); State.loopAnimFrame = null; }
+  const btn = document.getElementById('loopPlayBtn');
+  if (btn) {
+    btn.style.background = '#993556';
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  }
+  document.querySelectorAll('.loop-slot .loop-state').forEach(el => {
+    if (el.textContent === 'SPEELT') el.textContent = 'KLAAR';
+  });
+  document.querySelectorAll('[id^="loopProg"]').forEach(p => p.setAttribute('stroke-dashoffset', 2 * Math.PI * 46));
+}
+
+// -------- TOAST --------
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+}
+
+// -------- BOOT --------
+document.getElementById('startBtn').onclick = async () => {
+  document.getElementById('start').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  await initAudio();
+  await loadDevices();
+  State.samples = await loadSamplesDB();
+  setTab('studio');
+};
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => setTab(t.dataset.tab));
+
+// Re-request audio on visibility (iOS fix)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && State.audioCtx && State.audioCtx.state === 'suspended') {
+    State.audioCtx.resume().catch(() => {});
+  }
+});
+</script>
+</body>
+</html>
