@@ -104,6 +104,13 @@
     font-size: 14px; display: flex; align-items: center; justify-content: center;
     cursor: pointer; opacity: 0.7;
   }
+  .sample-card .rev-btn {
+    position: absolute; top: 4px; left: 4px; width: 26px; height: 26px;
+    border-radius: 50%; background: rgba(0,0,0,0.3); color: white; border: none;
+    font-size: 12px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0.7; font-weight: 700;
+  }
+  .sample-card .rev-btn:hover { opacity: 1; }
   .sample-empty {
     border-radius: 18px; padding: 14px; text-align: center; cursor: pointer;
     background: rgba(255,255,255,0.04); border: 2px dashed rgba(255,255,255,0.2);
@@ -394,6 +401,13 @@
   </div>
 
   <div id="screen"></div>
+
+  <button id="latencyBtn" title="Audio latency info" style="
+    position: fixed; bottom: 8px; right: 8px; z-index: 10;
+    background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5);
+    border: none; border-radius: 50%; width: 32px; height: 32px;
+    font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  ">ms</button>
 </div>
 
 <script>
@@ -418,8 +432,9 @@ const ENVELOPES = {
 const State = {
   audioCtx: null,
   masterGain: null,
-  samples: [],            // { id, name, emoji, color, buffer, duration }
+  samples: [],            // { id, name, emoji, color, buffer, duration, kind: 'drum'|'melody' }
   activeTab: 'studio',
+  studioFilter: 'drum',   // 'drum' of 'melody'
   drumTracks: [
     { sampleId: null, pattern: new Array(16).fill(false) },
     { sampleId: null, pattern: new Array(16).fill(false) },
@@ -433,6 +448,8 @@ const State = {
   melodySampleId: null,
   melodyEnvelope: 'kort',
   melodyOctave: 0, // 0 = middle, -1 lower, +1 higher
+  midiAccess: null,
+  midiInputs: [],
   loopTracks: [
     { buffer: null, layers: [], state: 'empty', name: null, lengthSec: null },
     { buffer: null, layers: [], state: 'empty', name: null, lengthSec: null },
@@ -455,10 +472,20 @@ const State = {
 async function initAudio() {
   if (State.audioCtx) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
+  // latencyHint 'interactive' is already the default low-latency mode
+  // Explicit sampleRate request skipped — browser kiest best match met hardware (lagere interne buffers)
   State.audioCtx = new Ctx({ latencyHint: 'interactive' });
   State.masterGain = State.audioCtx.createGain();
   State.masterGain.gain.value = 0.9;
   State.masterGain.connect(State.audioCtx.destination);
+
+  // Warm-up: speel een stil klikje om de audio-pipeline actief te maken
+  // Zonder dit is de allereerste noot-afspeling vaak extra traag (cold start)
+  const warmup = State.audioCtx.createBufferSource();
+  const silentBuf = State.audioCtx.createBuffer(1, 128, State.audioCtx.sampleRate);
+  warmup.buffer = silentBuf;
+  warmup.connect(State.masterGain);
+  warmup.start();
 
   // iOS Safari focus-loss fix
   document.addEventListener('visibilitychange', () => {
@@ -546,6 +573,87 @@ async function deleteSampleDB(id) {
 function audioBufferToFloat32(buffer) {
   const data = buffer.getChannelData(0);
   return new Float32Array(data);
+}
+
+// -------- AUDIO PROCESSING --------
+// Stille vier: DC-offset weg + normaliseren + auto-trim begin + fades
+function processRecording(buffer, options = {}) {
+  const skipTrim = options.skipTrim || false; // loop-opnames mogen niet getrimd worden
+  const sampleRate = buffer.sampleRate;
+  const inputData = buffer.getChannelData(0);
+  const length = inputData.length;
+
+  // Werk met een kopie
+  const data = new Float32Array(length);
+  for (let i = 0; i < length; i++) data[i] = inputData[i];
+
+  // 1. DC-offset verwijderen: gemiddelde amplitude wegtrekken
+  let sum = 0;
+  for (let i = 0; i < length; i++) sum += data[i];
+  const dcOffset = sum / length;
+  if (Math.abs(dcOffset) > 0.0001) {
+    for (let i = 0; i < length; i++) data[i] -= dcOffset;
+  }
+
+  // 2. Auto-trim begin: zoek eerste sample boven -40dB threshold (in windows)
+  let trimStart = 0;
+  if (!skipTrim) {
+    const threshold = 0.01; // ~-40dB
+    const windowSize = Math.floor(sampleRate * 0.01); // 10ms vensters
+    for (let i = 0; i < length - windowSize; i += windowSize) {
+      let peak = 0;
+      for (let j = 0; j < windowSize; j++) {
+        const abs = Math.abs(data[i + j]);
+        if (abs > peak) peak = abs;
+      }
+      if (peak > threshold) {
+        // Ga 20ms terug zodat je de aanloop niet afsnijdt
+        trimStart = Math.max(0, i - Math.floor(sampleRate * 0.02));
+        break;
+      }
+    }
+  }
+
+  const trimmedLength = length - trimStart;
+  if (trimmedLength < Math.floor(sampleRate * 0.05)) {
+    // Minder dan 50ms audio → waarschijnlijk lege opname, geef origineel terug
+    return buffer;
+  }
+
+  // 3. Normaliseren: vind piek, schaal naar -3dB (ongeveer 0.707)
+  let peak = 0;
+  for (let i = trimStart; i < length; i++) {
+    const abs = Math.abs(data[i]);
+    if (abs > peak) peak = abs;
+  }
+  const targetPeak = 0.707;
+  const normalizeGain = peak > 0.001 ? Math.min(targetPeak / peak, 10) : 1; // max 10x boost
+
+  // 4. Bouw outputbuffer met normalisering + fades
+  const out = State.audioCtx.createBuffer(1, trimmedLength, sampleRate);
+  const outData = out.getChannelData(0);
+  const fadeSamples = Math.floor(sampleRate * 0.005); // 5ms fades
+  for (let i = 0; i < trimmedLength; i++) {
+    let v = data[trimStart + i] * normalizeGain;
+    // fade-in
+    if (i < fadeSamples) v *= i / fadeSamples;
+    // fade-out
+    if (i >= trimmedLength - fadeSamples) {
+      v *= (trimmedLength - i) / fadeSamples;
+    }
+    outData[i] = v;
+  }
+
+  return out;
+}
+
+function reverseBuffer(buffer) {
+  const length = buffer.length;
+  const out = State.audioCtx.createBuffer(1, length, buffer.sampleRate);
+  const inData = buffer.getChannelData(0);
+  const outData = out.getChannelData(0);
+  for (let i = 0; i < length; i++) outData[i] = inData[length - 1 - i];
+  return out;
 }
 
 // -------- RECORDING --------
@@ -685,9 +793,12 @@ async function startRecording(options = {}) {
     const blob = new Blob(chunks, { type: mime || 'audio/webm' });
     const arrayBuffer = await blob.arrayBuffer();
     try {
-      const buffer = await State.audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      const rawBuffer = await State.audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      // Audio processing: DC-offset weg + normaliseren + trim begin + fades
+      // Voor loop-opnames: skip trim (lengte moet exact blijven)
+      const processed = processRecording(rawBuffer, { skipTrim: options.skipProcessing });
       cleanup();
-      if (onFinish) onFinish(buffer);
+      if (onFinish) onFinish(processed);
     } catch (e) {
       console.error('Decode failed', e);
       cleanup();
@@ -825,14 +936,32 @@ async function recordNewSample(onDone) {
 // -------- PLAYBACK HELPERS --------
 function playSample(sample, opts = {}) {
   if (!sample || !sample.buffer) return null;
-  const src = State.audioCtx.createBufferSource();
+  const ctx = State.audioCtx;
+  const src = ctx.createBufferSource();
   src.buffer = sample.buffer;
   const playbackRate = opts.playbackRate || 1;
   src.playbackRate.value = playbackRate;
-  const gain = State.audioCtx.createGain();
-  const now = State.audioCtx.currentTime;
-  const env = opts.envelope || { attack: 0.005, release: 0.05 };
   const peak = opts.gain || 1;
+  const env = opts.envelope;
+
+  // FAST PATH: geen envelope of 'kort' = direct connect zonder gain-automation
+  // Dit scheelt ~5-15ms latency op desktop, nog meer op tablets
+  if (!env || (env.attack <= 0.01 && env.release <= 0.1)) {
+    if (peak !== 1) {
+      const gain = ctx.createGain();
+      gain.gain.value = peak;
+      src.connect(gain);
+      gain.connect(State.masterGain);
+    } else {
+      src.connect(State.masterGain);
+    }
+    src.start();
+    return src;
+  }
+
+  // SLOW PATH: volledige envelope voor Zacht/Spook/Galm
+  const gain = ctx.createGain();
+  const now = ctx.currentTime;
   gain.gain.setValueAtTime(0, now);
   gain.gain.linearRampToValueAtTime(peak, now + env.attack);
   const duration = sample.buffer.duration / playbackRate;
@@ -889,25 +1018,34 @@ function renderStudio() {
     card.className = 'sample-card';
     card.style.background = s.color;
     card.innerHTML = `
+      <button class="rev-btn" data-id="${s.id}" title="Achteruit afspelen">⏪</button>
       <button class="del-btn" data-id="${s.id}">×</button>
       <div class="emoji">${s.emoji}</div>
       <div class="name">${s.name}</div>
       <div class="duration">${s.duration.toFixed(1)}s</div>
     `;
     card.onclick = (e) => {
-      if (e.target.classList.contains('del-btn')) return;
+      if (e.target.closest('.del-btn') || e.target.closest('.rev-btn')) return;
       playSample(s);
     };
     card.querySelector('.del-btn').onclick = async (e) => {
       e.stopPropagation();
       if (confirm('Geluid verwijderen: ' + s.name + '?')) {
         State.samples = State.samples.filter(x => x.id !== s.id);
-        // Clean up references
         State.drumTracks.forEach(t => { if (t.sampleId === s.id) t.sampleId = null; });
         if (State.melodySampleId === s.id) State.melodySampleId = null;
         await deleteSampleDB(s.id);
         renderCurrentScreen();
       }
+    };
+    card.querySelector('.rev-btn').onclick = async (e) => {
+      e.stopPropagation();
+      s.buffer = reverseBuffer(s.buffer);
+      // Preview nieuw geluid
+      playSample(s);
+      // Opslaan
+      await saveSampleDB(s);
+      showToast('Achteruit gezet');
     };
     grid.appendChild(card);
   });
@@ -1441,6 +1579,7 @@ async function doLoopRecord(trackIdx, isOverdub) {
     maxSeconds: Math.min(recordLength, 12),
     title: isOverdub ? 'Overdub: speel over de loop!' : 'Neem je loop op',
     autoStart: true,
+    skipProcessing: true, // loop-opnames mogen niet getrimd worden (timing)
     onFinish: async (buffer) => {
       // Trim to exact length
       const trimmed = trimBuffer(buffer, targetLength);
@@ -1621,6 +1760,84 @@ function showToast(msg) {
   setTimeout(() => t.remove(), 2000);
 }
 
+// -------- LATENCY INFO --------
+function showLatencyInfo() {
+  const ctx = State.audioCtx;
+  if (!ctx) return;
+
+  // Browser-gerapporteerde latency
+  const baseLatency = (ctx.baseLatency || 0) * 1000;  // ms
+  const outputLatency = (ctx.outputLatency || 0) * 1000;  // ms (niet in alle browsers)
+  const sampleRate = ctx.sampleRate;
+
+  // Klein test-geluid: korte sinus-click
+  function clickTest() {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 1000;
+    gain.gain.value = 0;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.001);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.05);
+    osc.connect(gain);
+    gain.connect(State.masterGain);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.style.justifyContent = 'center';
+  overlay.innerHTML = `
+    <h2 class="picker-title">Audio latency</h2>
+    <div style="width: 100%; max-width: 400px; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 14px; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <span style="color: #B4B2A9;">Browser buffer</span>
+        <span style="font-weight: 600;">${baseLatency.toFixed(1)} ms</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <span style="color: #B4B2A9;">Output latency</span>
+        <span style="font-weight: 600;">${outputLatency > 0 ? outputLatency.toFixed(1) + ' ms' : 'onbekend'}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <span style="color: #B4B2A9;">Sample rate</span>
+        <span style="font-weight: 600;">${(sampleRate/1000).toFixed(1)} kHz</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+        <span style="color: #B4B2A9;">Totale latency (geschat)</span>
+        <span style="font-weight: 600; color: ${(baseLatency + outputLatency) < 25 ? '#5DCAA5' : (baseLatency + outputLatency) < 50 ? '#EF9F27' : '#E24B4A'};">
+          ${(baseLatency + outputLatency).toFixed(1)} ms
+        </span>
+      </div>
+    </div>
+
+    <div style="color: #B4B2A9; font-size: 12px; max-width: 400px; text-align: center; margin-bottom: 20px; line-height: 1.5;">
+      <strong style="color: white;">Click-test:</strong> druk herhaaldelijk op de knop hieronder.<br>
+      Hoor je vertraging tussen klik en geluid?
+    </div>
+
+    <button id="clickTest" style="
+      width: 140px; height: 140px; border-radius: 50%; border: 6px solid white;
+      background: #7F77DD; color: white; font-family: inherit; font-size: 20px;
+      font-weight: 600; cursor: pointer; margin-bottom: 20px;
+    ">KLIK</button>
+
+    <div style="color: #888; font-size: 11px; max-width: 400px; text-align: center; line-height: 1.5; margin-bottom: 20px;">
+      Groen &lt; 25ms = prima. Oranje 25-50ms = merkbaar maar speelbaar. Rood &gt; 50ms = storend.<br>
+      Tips: bedraad monitoren, Bluetooth uit, andere tabs sluiten, Focusrite buffer-size naar 64 samples in de drivers.
+    </div>
+
+    <button class="rec-cancel" id="latClose">Sluiten</button>
+  `;
+  document.body.appendChild(overlay);
+
+  const testBtn = overlay.querySelector('#clickTest');
+  testBtn.onmousedown = clickTest;
+  testBtn.ontouchstart = (e) => { e.preventDefault(); clickTest(); };
+
+  overlay.querySelector('#latClose').onclick = () => overlay.remove();
+}
+
 // -------- BOOT --------
 document.getElementById('startBtn').onclick = async () => {
   document.getElementById('start').classList.add('hidden');
@@ -1632,6 +1849,7 @@ document.getElementById('startBtn').onclick = async () => {
 };
 
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => setTab(t.dataset.tab));
+document.getElementById('latencyBtn').onclick = showLatencyInfo;
 
 // Re-request audio on visibility (iOS fix)
 document.addEventListener('visibilitychange', () => {
