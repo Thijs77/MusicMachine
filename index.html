@@ -934,9 +934,15 @@ async function recordNewSample(onDone) {
 }
 
 // -------- PLAYBACK HELPERS --------
+// Latency debug buffer
+State.latencyLog = [];
+
 function playSample(sample, opts = {}) {
   if (!sample || !sample.buffer) return null;
   const ctx = State.audioCtx;
+  const eventTime = opts.eventTime || performance.now(); // timestamp van toets-event
+  const t0 = performance.now();
+
   const src = ctx.createBufferSource();
   src.buffer = sample.buffer;
   const playbackRate = opts.playbackRate || 1;
@@ -944,8 +950,9 @@ function playSample(sample, opts = {}) {
   const peak = opts.gain || 1;
   const env = opts.envelope;
 
+  const t1 = performance.now();
+
   // FAST PATH: geen envelope of 'kort' = direct connect zonder gain-automation
-  // Dit scheelt ~5-15ms latency op desktop, nog meer op tablets
   if (!env || (env.attack <= 0.01 && env.release <= 0.1)) {
     if (peak !== 1) {
       const gain = ctx.createGain();
@@ -955,7 +962,23 @@ function playSample(sample, opts = {}) {
     } else {
       src.connect(State.masterGain);
     }
-    src.start();
+    // Gebruik currentTime direct (niet 0/undefined) zodat we weten wat Chrome doet
+    const startAt = ctx.currentTime;
+    src.start(startAt);
+
+    const t2 = performance.now();
+    State.latencyLog.push({
+      eventToCall: (t0 - eventTime).toFixed(2),
+      setupMs: (t1 - t0).toFixed(2),
+      connectStartMs: (t2 - t1).toFixed(2),
+      totalJsMs: (t2 - eventTime).toFixed(2),
+      startAt: startAt.toFixed(4),
+      ctxNow: ctx.currentTime.toFixed(4),
+      baseLat: ((ctx.baseLatency || 0) * 1000).toFixed(1),
+      outLat: ((ctx.outputLatency || 0) * 1000).toFixed(1),
+      rate: playbackRate.toFixed(3)
+    });
+    if (State.latencyLog.length > 20) State.latencyLog.shift();
     return src;
   }
 
@@ -1312,17 +1335,17 @@ function renderMelody() {
   });
 
   document.querySelectorAll('.key').forEach(key => {
-    const play = () => {
+    const play = (eventTime) => {
       const idx = +key.dataset.idx;
       const semitones = NOTE_SEMITONES[idx] + State.melodyOctave * 12;
       const rate = Math.pow(2, semitones / 12);
       const s = getSample(State.melodySampleId);
-      if (s) playSample(s, { playbackRate: rate, envelope: ENVELOPES[State.melodyEnvelope] });
+      if (s) playSample(s, { playbackRate: rate, envelope: ENVELOPES[State.melodyEnvelope], eventTime });
       key.classList.add('active');
       setTimeout(() => key.classList.remove('active'), 120);
     };
-    key.onmousedown = play;
-    key.ontouchstart = (e) => { e.preventDefault(); play(); };
+    key.onmousedown = (e) => play(e.timeStamp);
+    key.ontouchstart = (e) => { e.preventDefault(); play(e.timeStamp); };
   });
 
   document.querySelectorAll('.env-btn').forEach(btn => {
@@ -1765,12 +1788,10 @@ function showLatencyInfo() {
   const ctx = State.audioCtx;
   if (!ctx) return;
 
-  // Browser-gerapporteerde latency
-  const baseLatency = (ctx.baseLatency || 0) * 1000;  // ms
-  const outputLatency = (ctx.outputLatency || 0) * 1000;  // ms (niet in alle browsers)
+  const baseLatency = (ctx.baseLatency || 0) * 1000;
+  const outputLatency = (ctx.outputLatency || 0) * 1000;
   const sampleRate = ctx.sampleRate;
 
-  // Klein test-geluid: korte sinus-click
   function clickTest() {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -1785,46 +1806,66 @@ function showLatencyInfo() {
     osc.stop(ctx.currentTime + 0.1);
   }
 
+  // Bouw log-tabel van recente note-plays
+  const log = State.latencyLog.slice(-8);
+  const logHtml = log.length === 0
+    ? '<div style="color: #888; font-style: italic;">Nog geen noten gespeeld. Sluit dit, speel een paar toetsen, kom terug.</div>'
+    : `<table style="width: 100%; font-size: 11px; color: #B4B2A9; border-collapse: collapse;">
+        <tr style="color: white;">
+          <th style="text-align:left; padding: 4px;">evt→js</th>
+          <th style="text-align:left; padding: 4px;">setup</th>
+          <th style="text-align:left; padding: 4px;">start</th>
+          <th style="text-align:left; padding: 4px;">totaal js</th>
+          <th style="text-align:left; padding: 4px;">rate</th>
+        </tr>
+        ${log.map(l => `<tr>
+          <td style="padding: 3px;">${l.eventToCall}ms</td>
+          <td style="padding: 3px;">${l.setupMs}ms</td>
+          <td style="padding: 3px;">${l.connectStartMs}ms</td>
+          <td style="padding: 3px; font-weight: 600; color: ${parseFloat(l.totalJsMs) < 5 ? '#5DCAA5' : parseFloat(l.totalJsMs) < 15 ? '#EF9F27' : '#E24B4A'};">${l.totalJsMs}ms</td>
+          <td style="padding: 3px;">${l.rate}×</td>
+        </tr>`).join('')}
+      </table>`;
+
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
-  overlay.style.justifyContent = 'center';
+  overlay.style.justifyContent = 'flex-start';
+  overlay.style.paddingTop = '40px';
+  overlay.style.overflowY = 'auto';
   overlay.innerHTML = `
     <h2 class="picker-title">Audio latency</h2>
-    <div style="width: 100%; max-width: 400px; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 14px; margin-bottom: 16px;">
-      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+    <div style="width: 100%; max-width: 450px; background: rgba(255,255,255,0.05); padding: 16px; border-radius: 14px; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
         <span style="color: #B4B2A9;">Browser buffer</span>
         <span style="font-weight: 600;">${baseLatency.toFixed(1)} ms</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
-        <span style="color: #B4B2A9;">Output latency</span>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+        <span style="color: #B4B2A9;">Output latency (OS→speaker)</span>
         <span style="font-weight: 600;">${outputLatency > 0 ? outputLatency.toFixed(1) + ' ms' : 'onbekend'}</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px;">
         <span style="color: #B4B2A9;">Sample rate</span>
         <span style="font-weight: 600;">${(sampleRate/1000).toFixed(1)} kHz</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-        <span style="color: #B4B2A9;">Totale latency (geschat)</span>
-        <span style="font-weight: 600; color: ${(baseLatency + outputLatency) < 25 ? '#5DCAA5' : (baseLatency + outputLatency) < 50 ? '#EF9F27' : '#E24B4A'};">
-          ${(baseLatency + outputLatency).toFixed(1)} ms
-        </span>
+    </div>
+
+    <div style="width: 100%; max-width: 450px; background: rgba(255,255,255,0.05); padding: 12px; border-radius: 14px; margin-bottom: 16px;">
+      <div style="color: white; font-size: 13px; margin-bottom: 8px; font-weight: 600;">Laatste 8 noten gespeeld (JS-tijden):</div>
+      ${logHtml}
+      <div style="color: #888; font-size: 10px; margin-top: 8px; line-height: 1.4;">
+        evt→js = vanaf klik tot onze code reageert · setup = buffer aanmaken · start = connect+start aanroep · totaal js = alles in JavaScript.<br>
+        Deze tijden + output latency (${outputLatency.toFixed(0)}ms) = totale voelbare latency.
       </div>
     </div>
 
-    <div style="color: #B4B2A9; font-size: 12px; max-width: 400px; text-align: center; margin-bottom: 20px; line-height: 1.5;">
-      <strong style="color: white;">Click-test:</strong> druk herhaaldelijk op de knop hieronder.<br>
-      Hoor je vertraging tussen klik en geluid?
-    </div>
-
     <button id="clickTest" style="
-      width: 140px; height: 140px; border-radius: 50%; border: 6px solid white;
-      background: #7F77DD; color: white; font-family: inherit; font-size: 20px;
-      font-weight: 600; cursor: pointer; margin-bottom: 20px;
+      width: 100px; height: 100px; border-radius: 50%; border: 4px solid white;
+      background: #7F77DD; color: white; font-family: inherit; font-size: 16px;
+      font-weight: 600; cursor: pointer; margin-bottom: 12px;
     ">KLIK</button>
 
-    <div style="color: #888; font-size: 11px; max-width: 400px; text-align: center; line-height: 1.5; margin-bottom: 20px;">
-      Groen &lt; 25ms = prima. Oranje 25-50ms = merkbaar maar speelbaar. Rood &gt; 50ms = storend.<br>
-      Tips: bedraad monitoren, Bluetooth uit, andere tabs sluiten, Focusrite buffer-size naar 64 samples in de drivers.
+    <div style="color: #888; font-size: 11px; max-width: 450px; text-align: center; line-height: 1.5; margin-bottom: 16px;">
+      Vergelijk hoe deze KLIK voelt vs. een toets op het keyboard. Als KLIK snel is en toets-spelen niet, zit het probleem in de sample-playback niet in het systeem.
     </div>
 
     <button class="rec-cancel" id="latClose">Sluiten</button>
