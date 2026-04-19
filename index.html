@@ -1279,10 +1279,43 @@ function stopDrum() {
 }
 
 // -------- MELODY --------
+// Pre-warm alle pitches zodat Chrome's resampler niet bij eerste noot stottert
+function prewarmMelody() {
+  const s = getSample(State.melodySampleId);
+  if (!s || !s.buffer || !State.audioCtx) return;
+  const ctx = State.audioCtx;
+  // Bouw alle mogelijke rates (octaaf -2 t/m +2, alle 8 noten)
+  const allRates = new Set();
+  for (let oct = -2; oct <= 2; oct++) {
+    for (let i = 0; i < NOTE_SEMITONES.length; i++) {
+      const semi = NOTE_SEMITONES[i] + oct * 12;
+      allRates.add(Math.pow(2, semi / 12));
+    }
+  }
+  // Speel elke rate heel even op gain 0 — triggert Chrome resampler init
+  const now = ctx.currentTime;
+  let i = 0;
+  allRates.forEach(rate => {
+    const src = ctx.createBufferSource();
+    src.buffer = s.buffer;
+    src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.value = 0; // volledig stil
+    src.connect(g);
+    g.connect(ctx.destination);
+    src.start(now + i * 0.001);
+    src.stop(now + i * 0.001 + 0.005); // 5ms per pitch
+    i++;
+  });
+}
+
 function renderMelody() {
   const screen = document.getElementById('screen');
   const activeSample = getSample(State.melodySampleId) || State.samples[0];
   if (activeSample && !State.melodySampleId) State.melodySampleId = activeSample.id;
+
+  // Warm de resamplers op voor de gekozen sample
+  if (State.melodySampleId) prewarmMelody();
 
   screen.innerHTML = `
     <div class="melody-sound-row">
