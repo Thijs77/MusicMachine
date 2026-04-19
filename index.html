@@ -472,22 +472,28 @@ const State = {
 async function initAudio() {
   if (State.audioCtx) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
-  // latencyHint 'interactive' is already the default low-latency mode
-  // Explicit sampleRate request skipped — browser kiest best match met hardware (lagere interne buffers)
-  State.audioCtx = new Ctx({ latencyHint: 'interactive' });
+  // Probeer expliciet lage latency af te dwingen
+  // latencyHint als number in seconden is de strictste hint
+  try {
+    State.audioCtx = new Ctx({
+      latencyHint: 0.005,  // vraag 5ms, Chrome kiest dichtstbijzijnde haalbare
+      sampleRate: 48000
+    });
+  } catch (e) {
+    // Fallback als specifieke sampleRate niet werkt
+    State.audioCtx = new Ctx({ latencyHint: 'interactive' });
+  }
   State.masterGain = State.audioCtx.createGain();
   State.masterGain.gain.value = 0.9;
   State.masterGain.connect(State.audioCtx.destination);
 
-  // Warm-up: speel een stil klikje om de audio-pipeline actief te maken
-  // Zonder dit is de allereerste noot-afspeling vaak extra traag (cold start)
+  // Warm-up
   const warmup = State.audioCtx.createBufferSource();
   const silentBuf = State.audioCtx.createBuffer(1, 128, State.audioCtx.sampleRate);
   warmup.buffer = silentBuf;
   warmup.connect(State.masterGain);
   warmup.start();
 
-  // iOS Safari focus-loss fix
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && State.audioCtx.state !== 'running') {
       State.audioCtx.resume().catch(() => {});
